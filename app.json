@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Vitalis",
+    "slug": "vitalis",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "vitalis",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.vitalis.mobile"
+    },
+    "android": {
+      "package": "app.vitalis.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#2D9CDB"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#2D9CDB"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "supabaseUrl": "",
+      "supabaseAnonKey": ""
+    }
+  }
+}
