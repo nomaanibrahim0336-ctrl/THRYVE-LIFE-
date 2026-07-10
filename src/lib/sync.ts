@@ -12,6 +12,16 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 let running = false;
 
+// Subscribers notified after a sync pulls new rows, so mounted screens can
+// refresh their in-memory state from SQLite. Avoids a store <-> sync import cycle.
+type Listener = () => void;
+const pullListeners = new Set<Listener>();
+
+export function onPulled(fn: Listener): () => void {
+  pullListeners.add(fn);
+  return () => pullListeners.delete(fn);
+}
+
 async function requireUserId(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
   return data.session?.user.id ?? null;
@@ -28,7 +38,7 @@ async function pushTable(
   return !error;
 }
 
-export async function syncNow(): Promise<{ pushed: number } | null> {
+export async function syncNow(): Promise<{ pushed: number; pulled: number } | null> {
   if (!isSupabaseConfigured || running) return null;
   const userId = await requireUserId();
   if (!userId) return null; // signed out — nothing to sync
@@ -64,10 +74,90 @@ export async function syncNow(): Promise<{ pushed: number } | null> {
       pushed += checkins.length;
     }
 
-    return { pushed };
+    const pulled = await pullAll(db);
+    if (pulled > 0) pullListeners.forEach((fn) => fn());
+    return { pushed, pulled };
   } finally {
     running = false;
   }
+}
+
+/**
+ * Pull cloud rows into SQLite. Timestamp-wins: a remote row overwrites the local
+ * one only when its updated_at is newer (or the local row is absent). Rows written
+ * here are marked synced = 1 so we don't immediately push them back.
+ */
+async function pullAll(db: Awaited<ReturnType<typeof getDb>>): Promise<number> {
+  let pulled = 0;
+
+  const { data: moods } = await supabase
+    .from('moods')
+    .select('id, score, note, logged_at, updated_at');
+  for (const r of moods ?? []) {
+    const existing = await db.getFirstAsync<{ updated_at: string }>(
+      'SELECT updated_at FROM moods WHERE id = ?',
+      r.id,
+    );
+    if (existing && existing.updated_at >= r.updated_at) continue;
+    await db.runAsync(
+      `INSERT INTO moods (id, score, note, logged_at, updated_at, synced) VALUES (?, ?, ?, ?, ?, 1)
+       ON CONFLICT(id) DO UPDATE SET score = excluded.score, note = excluded.note,
+         logged_at = excluded.logged_at, updated_at = excluded.updated_at, synced = 1`,
+      r.id,
+      r.score,
+      r.note,
+      r.logged_at,
+      r.updated_at,
+    );
+    pulled += 1;
+  }
+
+  const { data: habits } = await supabase
+    .from('habits')
+    .select('id, name, emoji, archived, created_at, updated_at');
+  for (const r of habits ?? []) {
+    const existing = await db.getFirstAsync<{ updated_at: string }>(
+      'SELECT updated_at FROM habits WHERE id = ?',
+      r.id,
+    );
+    if (existing && existing.updated_at >= r.updated_at) continue;
+    await db.runAsync(
+      `INSERT INTO habits (id, name, emoji, created_at, updated_at, archived, synced) VALUES (?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, emoji = excluded.emoji,
+         created_at = excluded.created_at, updated_at = excluded.updated_at,
+         archived = excluded.archived, synced = 1`,
+      r.id,
+      r.name,
+      r.emoji,
+      r.created_at,
+      r.updated_at,
+      r.archived ? 1 : 0,
+    );
+    pulled += 1;
+  }
+
+  const { data: checkins } = await supabase
+    .from('habit_checkins')
+    .select('id, habit_id, day, updated_at');
+  for (const r of checkins ?? []) {
+    // Check-ins are keyed by (habit_id, day); insert if that day isn't present.
+    const existing = await db.getFirstAsync<{ id: string }>(
+      'SELECT id FROM habit_checkins WHERE habit_id = ? AND day = ?',
+      r.habit_id,
+      r.day,
+    );
+    if (existing) continue;
+    await db.runAsync(
+      'INSERT OR IGNORE INTO habit_checkins (id, habit_id, day, updated_at, synced) VALUES (?, ?, ?, ?, 1)',
+      r.id,
+      r.habit_id,
+      r.day,
+      r.updated_at,
+    );
+    pulled += 1;
+  }
+
+  return pulled;
 }
 
 async function markSynced(

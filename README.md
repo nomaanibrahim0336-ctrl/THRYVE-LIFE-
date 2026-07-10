@@ -74,12 +74,15 @@ This is an **MVP scaffold**, intentionally minimal. Two product decisions are ba
 - **Email OTP sign-in** (`app/(auth)/login.tsx`, `src/features/auth/authStore.ts`) —
   request a code, verify, done. An auth gate in `app/_layout.tsx` routes signed-out
   users to `/login`. In local-only mode auth is skipped entirely.
-- **Sync engine** (`src/lib/sync.ts`) — push-only for v1: drains `synced = 0` rows
-  to Supabase (upsert on `id`, timestamp-wins) on login, app foreground, after each
-  write, and on reconnect (NetInfo). "Sync now" button lives in Profile.
+- **Two-way sync engine** (`src/lib/sync.ts`) — **push**: drains `synced = 0` rows
+  to Supabase (upsert on `id`, timestamp-wins). **pull**: downloads the user's cloud
+  rows into SQLite, overwriting a local row only when the remote `updated_at` is newer.
+  Runs on login, app foreground, after each write, and on reconnect (NetInfo). Mounted
+  screens auto-refresh via an `onPulled` subscriber. "Sync now" in Profile reports
+  pushed/pulled counts.
 
 ## What's not built yet (next steps)
 
-- Pull-down sync (cloud → device) for multi-device users; v1 is push-only.
+- Tombstone-based delete propagation (deletes/archives currently sync one-way).
 - Local notification scheduling (morning check-in / evening reflection).
 - Tests for the streak engine and week-summary aggregation.

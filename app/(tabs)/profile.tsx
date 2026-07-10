@@ -16,7 +16,11 @@ export default function ProfileScreen() {
   const onSync = async () => {
     setSyncMsg('Syncing…');
     const res = await syncNow();
-    setSyncMsg(res ? `Synced ${res.pushed} change${res.pushed === 1 ? '' : 's'}.` : 'Nothing to sync (offline mode or signed out).');
+    setSyncMsg(
+      res
+        ? `Synced — pushed ${res.pushed}, pulled ${res.pulled}.`
+        : 'Nothing to sync (offline mode or signed out).',
+    );
   };
 
   return (
