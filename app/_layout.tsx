@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/features/auth/authStore';
 import { useHabitStore } from '@/features/habits/habitStore';
 import { useMoodStore } from '@/features/mood/moodStore';
+import { initReminders } from '@/features/notifications/notifications';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { onPulled, startSyncListener, syncNow } from '@/lib/sync';
 import { useTheme } from '@/theme/useTheme';
@@ -55,6 +56,7 @@ function AppShell() {
       void useHabitStore.getState().load();
     });
     void syncNow();
+    void initReminders();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void syncNow();
     });

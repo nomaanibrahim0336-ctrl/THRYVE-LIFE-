@@ -16,6 +16,7 @@ type MoodState = {
   loading: boolean;
   load: () => Promise<void>;
   logMood: (score: number, note?: string) => Promise<void>;
+  deleteMood: (id: string) => Promise<void>;
 };
 
 /** Mood logging — writes to SQLite instantly, updates the list optimistically. */
@@ -27,7 +28,7 @@ export const useMoodStore = create<MoodState>((set, get) => ({
     set({ loading: true });
     const db = await getDb();
     const rows = await db.getAllAsync<Mood>(
-      'SELECT id, score, note, logged_at, updated_at FROM moods ORDER BY logged_at DESC LIMIT 100',
+      'SELECT id, score, note, logged_at, updated_at FROM moods WHERE deleted = 0 ORDER BY logged_at DESC LIMIT 100',
     );
     set({ moods: rows, loading: false });
   },
@@ -53,5 +54,18 @@ export const useMoodStore = create<MoodState>((set, get) => ({
       entry.updated_at,
     );
     void syncNow(); // best-effort push; no-op when offline or signed out
+  },
+
+  deleteMood: async (id) => {
+    // Optimistic removal from the list.
+    set({ moods: get().moods.filter((m) => m.id !== id) });
+    const db = await getDb();
+    // Tombstone rather than hard-delete so the removal syncs to other devices.
+    await db.runAsync(
+      'UPDATE moods SET deleted = 1, updated_at = ?, synced = 0 WHERE id = ?',
+      nowIso(),
+      id,
+    );
+    void syncNow();
   },
 }));

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, ScreenTitle, Subtle } from '@/components/ui';
 import { Heatmap } from '@/features/habits/Heatmap';
@@ -10,8 +10,15 @@ import { useTheme } from '@/theme/useTheme';
 
 export default function HabitsScreen() {
   const { theme } = useTheme();
-  const { habits, load, addHabit, toggleToday } = useHabitStore();
+  const { habits, load, addHabit, toggleToday, deleteHabit } = useHabitStore();
   const [name, setName] = useState('');
+
+  const confirmDelete = (id: string, habitName: string) => {
+    Alert.alert('Delete habit', `Delete "${habitName}" and its history?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteHabit(id) },
+    ]);
+  };
 
   useEffect(() => {
     load();
@@ -63,7 +70,9 @@ export default function HabitsScreen() {
         renderItem={({ item }) => (
           <Card style={{ gap: spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-              <Text style={{ fontSize: 26 }}>{item.emoji}</Text>
+              <Pressable onLongPress={() => confirmDelete(item.id, item.name)} hitSlop={8}>
+                <Text style={{ fontSize: 26 }}>{item.emoji}</Text>
+              </Pressable>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text }}>{item.name}</Text>
                 <Text style={{ color: theme.accent, fontWeight: '600' }}>🔥 {item.streak} day streak</Text>
@@ -88,6 +97,13 @@ export default function HabitsScreen() {
           </Card>
         )}
         ListEmptyComponent={<Subtle>No habits yet — add one above to start a streak.</Subtle>}
+        ListFooterComponent={
+          habits.length > 0 ? (
+            <Text style={{ color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.sm }}>
+              Tap the ring to check in · long-press the emoji to delete.
+            </Text>
+          ) : null
+        }
       />
     </SafeAreaView>
   );

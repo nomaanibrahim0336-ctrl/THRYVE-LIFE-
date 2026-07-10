@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { getDb } from '@/lib/db';
 import { nowIso, today, uid } from '@/lib/id';
 import { syncNow } from '@/lib/sync';
+import { computeStreak } from './streak';
 
 export type Habit = {
   id: string;
@@ -19,24 +20,10 @@ type HabitState = {
   addHabit: (name: string, emoji?: string) => Promise<void>;
   toggleToday: (habitId: string) => Promise<void>;
   archiveHabit: (habitId: string) => Promise<void>;
+  deleteHabit: (habitId: string) => Promise<void>;
   /** All YYYY-MM-DD check-in days for a habit (for the heatmap). */
   checkinDays: (habitId: string) => Promise<string[]>;
 };
-
-/** Compute a consecutive-day streak ending today from a set of check-in days. */
-function computeStreak(days: Set<string>): number {
-  let streak = 0;
-  const cursor = new Date();
-  // Streak counts today only if done; otherwise it counts up to yesterday.
-  if (!days.has(today(cursor))) {
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  while (days.has(today(cursor))) {
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
-}
 
 export const useHabitStore = create<HabitState>((set, get) => ({
   habits: [],
@@ -50,10 +37,10 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       name: string;
       emoji: string;
       created_at: string;
-    }>('SELECT id, name, emoji, created_at FROM habits WHERE archived = 0 ORDER BY created_at ASC');
+    }>('SELECT id, name, emoji, created_at FROM habits WHERE archived = 0 AND deleted = 0 ORDER BY created_at ASC');
 
     const checkinRows = await db.getAllAsync<{ habit_id: string; day: string }>(
-      'SELECT habit_id, day FROM habit_checkins',
+      'SELECT habit_id, day FROM habit_checkins WHERE deleted = 0',
     );
 
     const byHabit = new Map<string, Set<string>>();
@@ -94,16 +81,23 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   toggleToday: async (habitId) => {
     const db = await getDb();
     const day = today();
-    const existing = await db.getFirstAsync<{ id: string }>(
-      'SELECT id FROM habit_checkins WHERE habit_id = ? AND day = ?',
+    const existing = await db.getFirstAsync<{ id: string; deleted: number }>(
+      'SELECT id, deleted FROM habit_checkins WHERE habit_id = ? AND day = ?',
       habitId,
       day,
     );
     if (existing) {
-      await db.runAsync('DELETE FROM habit_checkins WHERE id = ?', existing.id);
+      // Flip the tombstone instead of hard-deleting so the change syncs.
+      const nextDeleted = existing.deleted === 1 ? 0 : 1;
+      await db.runAsync(
+        'UPDATE habit_checkins SET deleted = ?, updated_at = ?, synced = 0 WHERE id = ?',
+        nextDeleted,
+        nowIso(),
+        existing.id,
+      );
     } else {
       await db.runAsync(
-        'INSERT INTO habit_checkins (id, habit_id, day, updated_at, synced) VALUES (?, ?, ?, ?, 0)',
+        'INSERT INTO habit_checkins (id, habit_id, day, updated_at, deleted, synced) VALUES (?, ?, ?, ?, 0, 0)',
         uid(),
         habitId,
         day,
@@ -125,10 +119,29 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     void syncNow();
   },
 
+  deleteHabit: async (habitId) => {
+    // Optimistic removal.
+    set({ habits: get().habits.filter((h) => h.id !== habitId) });
+    const db = await getDb();
+    // Tombstone the habit and its check-ins so the deletion propagates.
+    const stamp = nowIso();
+    await db.runAsync(
+      'UPDATE habits SET deleted = 1, updated_at = ?, synced = 0 WHERE id = ?',
+      stamp,
+      habitId,
+    );
+    await db.runAsync(
+      'UPDATE habit_checkins SET deleted = 1, updated_at = ?, synced = 0 WHERE habit_id = ? AND deleted = 0',
+      stamp,
+      habitId,
+    );
+    void syncNow();
+  },
+
   checkinDays: async (habitId) => {
     const db = await getDb();
     const rows = await db.getAllAsync<{ day: string }>(
-      'SELECT day FROM habit_checkins WHERE habit_id = ? ORDER BY day ASC',
+      'SELECT day FROM habit_checkins WHERE habit_id = ? AND deleted = 0 ORDER BY day ASC',
       habitId,
     );
     return rows.map((r) => r.day);

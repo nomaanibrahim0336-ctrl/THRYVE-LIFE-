@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, ScreenTitle, Subtle } from '@/components/ui';
 import { MOOD_SCALE, moodEmoji } from '@/features/mood/moodMeta';
@@ -10,9 +10,16 @@ import { useTheme } from '@/theme/useTheme';
 
 export default function MoodScreen() {
   const { theme } = useTheme();
-  const { moods, load, logMood } = useMoodStore();
+  const { moods, load, logMood, deleteMood } = useMoodStore();
   const [selected, setSelected] = useState<number | null>(null);
   const [note, setNote] = useState('');
+
+  const confirmDelete = (id: string) => {
+    Alert.alert('Delete entry', 'Remove this mood entry?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteMood(id) },
+    ]);
+  };
 
   useEffect(() => {
     load();
@@ -84,17 +91,26 @@ export default function MoodScreen() {
         data={moods}
         keyExtractor={(m) => m.id}
         renderItem={({ item }) => (
-          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <Text style={{ fontSize: 28 }}>{moodEmoji(item.score)}</Text>
-            <View style={{ flex: 1 }}>
-              {item.note ? <Text style={{ color: theme.text }}>{item.note}</Text> : null}
-              <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                {new Date(item.logged_at).toLocaleString()}
-              </Text>
-            </View>
-          </Card>
+          <Pressable onLongPress={() => confirmDelete(item.id)}>
+            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+              <Text style={{ fontSize: 28 }}>{moodEmoji(item.score)}</Text>
+              <View style={{ flex: 1 }}>
+                {item.note ? <Text style={{ color: theme.text }}>{item.note}</Text> : null}
+                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                  {new Date(item.logged_at).toLocaleString()}
+                </Text>
+              </View>
+            </Card>
+          </Pressable>
         )}
         ListEmptyComponent={<Subtle>No moods yet — log your first above.</Subtle>}
+        ListFooterComponent={
+          moods.length > 0 ? (
+            <Text style={{ color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.sm }}>
+              Long-press an entry to delete it.
+            </Text>
+          ) : null
+        }
       />
     </SafeAreaView>
   );

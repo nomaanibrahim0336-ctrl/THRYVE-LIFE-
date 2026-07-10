@@ -69,7 +69,7 @@ This is an **MVP scaffold**, intentionally minimal. Two product decisions are ba
 2. **The loop is the product.** Resist feature bloat. Ship, get ~20 real users,
    then decide what Phase 2 earns its place.
 
-## Auth & sync (built)
+## Auth, sync, reminders (built)
 
 - **Email OTP sign-in** (`app/(auth)/login.tsx`, `src/features/auth/authStore.ts`) —
   request a code, verify, done. An auth gate in `app/_layout.tsx` routes signed-out
@@ -77,12 +77,23 @@ This is an **MVP scaffold**, intentionally minimal. Two product decisions are ba
 - **Two-way sync engine** (`src/lib/sync.ts`) — **push**: drains `synced = 0` rows
   to Supabase (upsert on `id`, timestamp-wins). **pull**: downloads the user's cloud
   rows into SQLite, overwriting a local row only when the remote `updated_at` is newer.
-  Runs on login, app foreground, after each write, and on reconnect (NetInfo). Mounted
-  screens auto-refresh via an `onPulled` subscriber. "Sync now" in Profile reports
-  pushed/pulled counts.
+  Runs on login, app foreground, after each write, and on reconnect (NetInfo).
+- **Two-way deletes via tombstones** — moods, habits, and check-ins carry a `deleted`
+  flag instead of being hard-removed, so unchecking a habit or deleting an entry
+  propagates across devices. Long-press to delete a mood entry or a habit.
+- **Local daily reminders** (`src/features/notifications/`) — optional morning
+  check-in and evening reflection, each with a time picker, scheduled as repeating
+  daily local notifications (no push server). Configured in Profile.
+
+## Tests
+
+`npm test` (Jest + jest-expo). Covers the two pieces of real logic:
+- `streak.ts` — the consecutive-day streak engine (edge cases: gaps, today-not-yet-done).
+- `summary.ts` — the local reflection copy (tone + never-clinical safety check).
 
 ## What's not built yet (next steps)
 
-- Tombstone-based delete propagation (deletes/archives currently sync one-way).
-- Local notification scheduling (morning check-in / evening reflection).
-- Tests for the streak engine and week-summary aggregation.
+- **Backend wiring** — create the Supabase project, fill `.env`, run the migration,
+  deploy the `reflect` function. Until then the app runs local-only. (See "Wiring up
+  Supabase" above.)
+- Pull-side reconciliation for check-in id divergence across 3+ devices (rare).

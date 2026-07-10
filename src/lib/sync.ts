@@ -49,27 +49,29 @@ export async function syncNow(): Promise<{ pushed: number; pulled: number } | nu
     let pushed = 0;
 
     const moods = await db.getAllAsync<Record<string, unknown>>(
-      'SELECT id, score, note, logged_at, updated_at FROM moods WHERE synced = 0',
+      'SELECT id, score, note, logged_at, updated_at, deleted FROM moods WHERE synced = 0',
     );
-    if (await pushTable('moods', moods, userId)) {
+    const moodPayload = moods.map((m) => ({ ...m, deleted: m.deleted === 1 }));
+    if (await pushTable('moods', moodPayload, userId)) {
       await markSynced(db, 'moods', moods);
       pushed += moods.length;
     }
 
     const habits = await db.getAllAsync<Record<string, unknown>>(
-      'SELECT id, name, emoji, archived, created_at, updated_at FROM habits WHERE synced = 0',
+      'SELECT id, name, emoji, archived, created_at, updated_at, deleted FROM habits WHERE synced = 0',
     );
     // SQLite stores booleans as 0/1; Postgres wants real booleans.
-    const habitPayload = habits.map((h) => ({ ...h, archived: h.archived === 1 }));
+    const habitPayload = habits.map((h) => ({ ...h, archived: h.archived === 1, deleted: h.deleted === 1 }));
     if (await pushTable('habits', habitPayload, userId)) {
       await markSynced(db, 'habits', habits);
       pushed += habits.length;
     }
 
     const checkins = await db.getAllAsync<Record<string, unknown>>(
-      'SELECT id, habit_id, day, updated_at FROM habit_checkins WHERE synced = 0',
+      'SELECT id, habit_id, day, updated_at, deleted FROM habit_checkins WHERE synced = 0',
     );
-    if (await pushTable('habit_checkins', checkins, userId)) {
+    const checkinPayload = checkins.map((c) => ({ ...c, deleted: c.deleted === 1 }));
+    if (await pushTable('habit_checkins', checkinPayload, userId)) {
       await markSynced(db, 'habit_checkins', checkins);
       pushed += checkins.length;
     }
@@ -92,7 +94,7 @@ async function pullAll(db: Awaited<ReturnType<typeof getDb>>): Promise<number> {
 
   const { data: moods } = await supabase
     .from('moods')
-    .select('id, score, note, logged_at, updated_at');
+    .select('id, score, note, logged_at, updated_at, deleted');
   for (const r of moods ?? []) {
     const existing = await db.getFirstAsync<{ updated_at: string }>(
       'SELECT updated_at FROM moods WHERE id = ?',
@@ -100,21 +102,23 @@ async function pullAll(db: Awaited<ReturnType<typeof getDb>>): Promise<number> {
     );
     if (existing && existing.updated_at >= r.updated_at) continue;
     await db.runAsync(
-      `INSERT INTO moods (id, score, note, logged_at, updated_at, synced) VALUES (?, ?, ?, ?, ?, 1)
+      `INSERT INTO moods (id, score, note, logged_at, updated_at, deleted, synced) VALUES (?, ?, ?, ?, ?, ?, 1)
        ON CONFLICT(id) DO UPDATE SET score = excluded.score, note = excluded.note,
-         logged_at = excluded.logged_at, updated_at = excluded.updated_at, synced = 1`,
+         logged_at = excluded.logged_at, updated_at = excluded.updated_at,
+         deleted = excluded.deleted, synced = 1`,
       r.id,
       r.score,
       r.note,
       r.logged_at,
       r.updated_at,
+      r.deleted ? 1 : 0,
     );
     pulled += 1;
   }
 
   const { data: habits } = await supabase
     .from('habits')
-    .select('id, name, emoji, archived, created_at, updated_at');
+    .select('id, name, emoji, archived, created_at, updated_at, deleted');
   for (const r of habits ?? []) {
     const existing = await db.getFirstAsync<{ updated_at: string }>(
       'SELECT updated_at FROM habits WHERE id = ?',
@@ -122,38 +126,50 @@ async function pullAll(db: Awaited<ReturnType<typeof getDb>>): Promise<number> {
     );
     if (existing && existing.updated_at >= r.updated_at) continue;
     await db.runAsync(
-      `INSERT INTO habits (id, name, emoji, created_at, updated_at, archived, synced) VALUES (?, ?, ?, ?, ?, ?, 1)
+      `INSERT INTO habits (id, name, emoji, created_at, updated_at, archived, deleted, synced) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
        ON CONFLICT(id) DO UPDATE SET name = excluded.name, emoji = excluded.emoji,
          created_at = excluded.created_at, updated_at = excluded.updated_at,
-         archived = excluded.archived, synced = 1`,
+         archived = excluded.archived, deleted = excluded.deleted, synced = 1`,
       r.id,
       r.name,
       r.emoji,
       r.created_at,
       r.updated_at,
       r.archived ? 1 : 0,
+      r.deleted ? 1 : 0,
     );
     pulled += 1;
   }
 
   const { data: checkins } = await supabase
     .from('habit_checkins')
-    .select('id, habit_id, day, updated_at');
+    .select('id, habit_id, day, updated_at, deleted');
   for (const r of checkins ?? []) {
-    // Check-ins are keyed by (habit_id, day); insert if that day isn't present.
-    const existing = await db.getFirstAsync<{ id: string }>(
-      'SELECT id FROM habit_checkins WHERE habit_id = ? AND day = ?',
+    // Check-ins are keyed by (habit_id, day). Match on that pair (ids differ per
+    // device) and let the newer updated_at win, honoring the tombstone flag.
+    const existing = await db.getFirstAsync<{ id: string; updated_at: string }>(
+      'SELECT id, updated_at FROM habit_checkins WHERE habit_id = ? AND day = ?',
       r.habit_id,
       r.day,
     );
-    if (existing) continue;
-    await db.runAsync(
-      'INSERT OR IGNORE INTO habit_checkins (id, habit_id, day, updated_at, synced) VALUES (?, ?, ?, ?, 1)',
-      r.id,
-      r.habit_id,
-      r.day,
-      r.updated_at,
-    );
+    if (existing) {
+      if (existing.updated_at >= r.updated_at) continue;
+      await db.runAsync(
+        'UPDATE habit_checkins SET updated_at = ?, deleted = ?, synced = 1 WHERE id = ?',
+        r.updated_at,
+        r.deleted ? 1 : 0,
+        existing.id,
+      );
+    } else {
+      await db.runAsync(
+        'INSERT OR IGNORE INTO habit_checkins (id, habit_id, day, updated_at, deleted, synced) VALUES (?, ?, ?, ?, ?, 1)',
+        r.id,
+        r.habit_id,
+        r.day,
+        r.updated_at,
+        r.deleted ? 1 : 0,
+      );
+    }
     pulled += 1;
   }
 

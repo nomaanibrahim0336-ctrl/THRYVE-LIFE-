@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, ScreenTitle, Subtle } from '@/components/ui';
 import { useAuthStore } from '@/features/auth/authStore';
+import { RemindersCard } from '@/features/notifications/RemindersCard';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { syncNow } from '@/lib/sync';
 import { spacing } from '@/theme/colors';
@@ -27,6 +28,8 @@ export default function ProfileScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
         <ScreenTitle>Profile</ScreenTitle>
+
+        <RemindersCard />
 
         <Card>
           <Subtle>Backend status</Subtle>

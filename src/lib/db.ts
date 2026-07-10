@@ -28,6 +28,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       note TEXT,
       logged_at TEXT NOT NULL,         -- ISO timestamp
       updated_at TEXT NOT NULL,
+      deleted INTEGER NOT NULL DEFAULT 0, -- tombstone for two-way delete sync
       synced INTEGER NOT NULL DEFAULT 0
     );
 
@@ -38,6 +39,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       archived INTEGER NOT NULL DEFAULT 0,
+      deleted INTEGER NOT NULL DEFAULT 0, -- tombstone for two-way delete sync
       synced INTEGER NOT NULL DEFAULT 0
     );
 
@@ -46,6 +48,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       habit_id TEXT NOT NULL,
       day TEXT NOT NULL,               -- YYYY-MM-DD (one check-in per habit per day)
       updated_at TEXT NOT NULL,
+      deleted INTEGER NOT NULL DEFAULT 0, -- tombstone: uncheck = deleted, not hard-removed
       synced INTEGER NOT NULL DEFAULT 0,
       UNIQUE (habit_id, day)
     );

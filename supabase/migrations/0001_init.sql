@@ -10,7 +10,8 @@ create table if not exists public.moods (
   score smallint not null check (score between 1 and 5),
   note text,
   logged_at timestamptz not null,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted boolean not null default false
 );
 create index if not exists idx_moods_user_time on public.moods (user_id, logged_at desc);
 
@@ -21,6 +22,7 @@ create table if not exists public.habits (
   name text not null,
   emoji text not null default '✅',
   archived boolean not null default false,
+  deleted boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -33,6 +35,7 @@ create table if not exists public.habit_checkins (
   habit_id uuid not null references public.habits (id) on delete cascade,
   day date not null,
   updated_at timestamptz not null default now(),
+  deleted boolean not null default false,
   unique (habit_id, day)
 );
 create index if not exists idx_checkins_user on public.habit_checkins (user_id, day);
