@@ -1,9 +1,8 @@
 // Supabase Edge Function: `reflect`
 // Owns the Claude call AND the safety layer. The Anthropic key never leaves the
-// server. Deploy with:  supabase functions deploy reflect
-// Set the key with:     supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+// server. The key is read from the ANTHROPIC_API_KEY function secret.
 
-import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 type WeekSummary = {
   moodCount: number;
@@ -27,7 +26,7 @@ Rules you must always follow:
 - If the data suggests sustained low mood, gently and non-alarmingly suggest talking to someone they trust or a professional, without diagnosing.
 - Never use clinical or alarming language.`;
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
