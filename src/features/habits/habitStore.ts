@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getDb } from '@/lib/db';
 import { nowIso, today, uid } from '@/lib/id';
+import { syncNow } from '@/lib/sync';
 
 export type Habit = {
   id: string;
@@ -87,6 +88,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       nowIso(),
     );
     await get().load();
+    void syncNow();
   },
 
   toggleToday: async (habitId) => {
@@ -109,6 +111,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       );
     }
     await get().load();
+    void syncNow();
   },
 
   archiveHabit: async (habitId) => {
@@ -119,6 +122,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       habitId,
     );
     await get().load();
+    void syncNow();
   },
 
   checkinDays: async (habitId) => {

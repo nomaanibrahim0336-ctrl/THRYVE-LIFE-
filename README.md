@@ -69,9 +69,17 @@ This is an **MVP scaffold**, intentionally minimal. Two product decisions are ba
 2. **The loop is the product.** Resist feature bloat. Ship, get ~20 real users,
    then decide what Phase 2 earns its place.
 
+## Auth & sync (built)
+
+- **Email OTP sign-in** (`app/(auth)/login.tsx`, `src/features/auth/authStore.ts`) —
+  request a code, verify, done. An auth gate in `app/_layout.tsx` routes signed-out
+  users to `/login`. In local-only mode auth is skipped entirely.
+- **Sync engine** (`src/lib/sync.ts`) — push-only for v1: drains `synced = 0` rows
+  to Supabase (upsert on `id`, timestamp-wins) on login, app foreground, after each
+  write, and on reconnect (NetInfo). "Sync now" button lives in Profile.
+
 ## What's not built yet (next steps)
 
-- `src/lib/sync.ts` — drain `synced = 0` rows to Supabase on reconnect.
-- Auth screen (Supabase magic-link) + an auth gate in `app/_layout.tsx`.
+- Pull-down sync (cloud → device) for multi-device users; v1 is push-only.
 - Local notification scheduling (morning check-in / evening reflection).
 - Tests for the streak engine and week-summary aggregation.

@@ -1,12 +1,24 @@
+import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Card, ScreenTitle, Subtle } from '@/components/ui';
+import { Button, Card, ScreenTitle, Subtle } from '@/components/ui';
+import { useAuthStore } from '@/features/auth/authStore';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { syncNow } from '@/lib/sync';
 import { spacing } from '@/theme/colors';
 import { useTheme } from '@/theme/useTheme';
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
+  const { session, signOut } = useAuthStore();
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  const onSync = async () => {
+    setSyncMsg('Syncing…');
+    const res = await syncNow();
+    setSyncMsg(res ? `Synced ${res.pushed} change${res.pushed === 1 ? '' : 's'}.` : 'Nothing to sync (offline mode or signed out).');
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
@@ -31,7 +43,23 @@ export default function ProfileScreen() {
             All your data lives on-device in SQLite. Configure Supabase in .env to enable
             sign-in, sync, and AI reflections.
           </Text>
+          {isSupabaseConfigured ? (
+            <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+              <Button label="Sync now" variant="ghost" onPress={onSync} />
+              {syncMsg ? <Subtle>{syncMsg}</Subtle> : null}
+            </View>
+          ) : null}
         </Card>
+
+        {session ? (
+          <Card>
+            <Subtle>Signed in as</Subtle>
+            <Text style={{ marginTop: spacing.xs, color: theme.text }}>{session.user.email}</Text>
+            <View style={{ marginTop: spacing.md }}>
+              <Button label="Sign out" variant="ghost" onPress={signOut} />
+            </View>
+          </Card>
+        ) : null}
 
         <Card>
           <Subtle>About</Subtle>

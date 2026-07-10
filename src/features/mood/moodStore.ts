@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getDb } from '@/lib/db';
 import { nowIso, uid } from '@/lib/id';
+import { syncNow } from '@/lib/sync';
 
 export type Mood = {
   id: string;
@@ -51,5 +52,6 @@ export const useMoodStore = create<MoodState>((set, get) => ({
       entry.logged_at,
       entry.updated_at,
     );
+    void syncNow(); // best-effort push; no-op when offline or signed out
   },
 }));
